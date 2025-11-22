@@ -2,3 +2,10 @@
 poetry.lock
 __pycache__/
 *.pyc
+
+# Streamlit secrets (contiene credenciales sensibles)
+.streamlit/secrets.toml
+
+# Credenciales de Google Cloud
+*.json
+!data/*.json

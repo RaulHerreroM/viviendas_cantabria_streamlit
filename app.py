@@ -6,6 +6,7 @@ import folium
 from streamlit_folium import st_folium
 from comarcas_municipios import obtener_comarca
 from coordenadas_municipios import obtener_coordenadas
+from google_sheets_loader import load_municipios_data, load_distritos_data
 import json
 import unicodedata
 
@@ -43,46 +44,13 @@ def normalizar_municipio(nombre):
 st.title("📊 Precios del Metro Cuadrado en Cantabria")
 st.markdown("### Analisis de precios inmobiliarios por municipio")
 
-# Cargar datos
-@st.cache_data
-def load_data():
-    # Intentar diferentes encodings
-    for encoding in ['latin-1', 'iso-8859-1', 'cp1252', 'utf-8']:
-        try:
-            df = pd.read_csv('data/precios_municipios_cantabria.csv', encoding=encoding)
-            break
-        except UnicodeDecodeError:
-            continue
-
-    # Convertir fecha a datetime
-    df['fecha'] = pd.to_datetime(df['fecha'])
-    # Filtrar valores nulos en precio_m2
-    df = df[df['precio_m2'] != '-']
-    df['precio_m2'] = pd.to_numeric(df['precio_m2'], errors='coerce')
-    df = df.dropna(subset=['precio_m2'])
-    return df
-
-@st.cache_data
-def load_distritos_santander():
-    """Cargar datos de distritos de Santander"""
-    for encoding in ['latin-1', 'iso-8859-1', 'cp1252', 'utf-8']:
-        try:
-            df = pd.read_csv('data/precios_distritos_santander.csv', encoding=encoding)
-            break
-        except UnicodeDecodeError:
-            continue
-
-    # Convertir fecha a datetime
-    df['fecha'] = pd.to_datetime(df['fecha'])
-    # Filtrar valores nulos en precio_m2
-    df = df[df['precio_m2'] != '-']
-    df['precio_m2'] = pd.to_numeric(df['precio_m2'], errors='coerce')
-    df = df.dropna(subset=['precio_m2'])
-    return df
+# Cargar datos desde Google Sheets
+# Nota: Las funciones load_municipios_data() y load_distritos_data()
+# ya vienen con @st.cache_data del modulo google_sheets_loader
 
 try:
-    df = load_data()
-    df_distritos = load_distritos_santander()
+    df = load_municipios_data()
+    df_distritos = load_distritos_data()
 
     # Agregar comarca a cada municipio
     df['comarca'] = df['municipio'].apply(obtener_comarca)
