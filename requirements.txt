@@ -1,6 +1,6 @@
 streamlit==1.31.0
 pandas==2.1.4
-folium==0.15.1
+folium==0.14.0
 streamlit-folium==0.16.0
 plotly==5.18.0
 numpy==1.26.3
