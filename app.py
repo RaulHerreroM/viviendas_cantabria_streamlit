@@ -62,14 +62,34 @@ def load_data():
     df = df.dropna(subset=['precio_m2'])
     return df
 
+@st.cache_data
+def load_distritos_santander():
+    """Cargar datos de distritos de Santander"""
+    for encoding in ['latin-1', 'iso-8859-1', 'cp1252', 'utf-8']:
+        try:
+            df = pd.read_csv('data/precios_distritos_santander.csv', encoding=encoding)
+            break
+        except UnicodeDecodeError:
+            continue
+
+    # Convertir fecha a datetime
+    df['fecha'] = pd.to_datetime(df['fecha'])
+    # Filtrar valores nulos en precio_m2
+    df = df[df['precio_m2'] != '-']
+    df['precio_m2'] = pd.to_numeric(df['precio_m2'], errors='coerce')
+    df = df.dropna(subset=['precio_m2'])
+    return df
+
 try:
     df = load_data()
+    df_distritos = load_distritos_santander()
 
     # Agregar comarca a cada municipio
     df['comarca'] = df['municipio'].apply(obtener_comarca)
 
     # Obtener lista de municipios disponibles (solo los que tienen datos)
     municipios_disponibles = sorted(df['municipio'].unique())
+    distritos_disponibles = sorted(df_distritos['distrito'].unique())
 
     # Sidebar para configuracion
     st.sidebar.header("⚙️ Configuracion")
@@ -361,12 +381,29 @@ try:
                 st.markdown("---")
 
     else:  # Series Temporales
-        # Seleccion multiple de municipios
-        municipios_seleccionados = st.sidebar.multiselect(
-            "Selecciona uno o mas municipios:",
-            options=municipios_disponibles,
-            default=['Santander'] if 'Santander' in municipios_disponibles else [municipios_disponibles[0]]
+        # Selector de tipo de zona
+        tipo_zona = st.sidebar.radio(
+            "Tipo de zona:",
+            options=["Municipios", "Distritos de Santander"]
         )
+
+        # Seleccion multiple segun el tipo de zona
+        if tipo_zona == "Municipios":
+            zonas_seleccionadas = st.sidebar.multiselect(
+                "Selecciona uno o mas municipios:",
+                options=municipios_disponibles,
+                default=['Santander'] if 'Santander' in municipios_disponibles else [municipios_disponibles[0]]
+            )
+            df_usado = df
+            columna_zona = 'municipio'
+        else:  # Distritos de Santander
+            zonas_seleccionadas = st.sidebar.multiselect(
+                "Selecciona uno o mas distritos:",
+                options=distritos_disponibles,
+                default=[distritos_disponibles[0]] if distritos_disponibles else []
+            )
+            df_usado = df_distritos
+            columna_zona = 'distrito'
 
         # Tipo de visualizacion
         tipo_visualizacion = st.sidebar.radio(
@@ -374,18 +411,18 @@ try:
             options=["Precio Absoluto", "Variacion Mensual (%)", "Variacion Anual (%)"]
         )
 
-        # Filtrar datos por municipios seleccionados
-        if municipios_seleccionados:
-            df_filtrado = df[df['municipio'].isin(municipios_seleccionados)].copy()
-            df_filtrado = df_filtrado.sort_values(['municipio', 'fecha'])
+        # Filtrar datos por zonas seleccionadas
+        if zonas_seleccionadas:
+            df_filtrado = df_usado[df_usado[columna_zona].isin(zonas_seleccionadas)].copy()
+            df_filtrado = df_filtrado.sort_values([columna_zona, 'fecha'])
 
             # Calcular variaciones segun seleccion
             if tipo_visualizacion == "Variacion Mensual (%)":
-                df_filtrado['valor'] = df_filtrado.groupby('municipio')['precio_m2'].pct_change() * 100
+                df_filtrado['valor'] = df_filtrado.groupby(columna_zona)['precio_m2'].pct_change() * 100
                 titulo_grafico = "Variacion Mensual del Precio por m² (%)"
                 ylabel = "Variacion Mensual (%)"
             elif tipo_visualizacion == "Variacion Anual (%)":
-                df_filtrado['valor'] = df_filtrado.groupby('municipio')['precio_m2'].pct_change(periods=12) * 100
+                df_filtrado['valor'] = df_filtrado.groupby(columna_zona)['precio_m2'].pct_change(periods=12) * 100
                 titulo_grafico = "Variacion Anual del Precio por m² (%)"
                 ylabel = "Variacion Anual (%)"
             else:
@@ -396,13 +433,13 @@ try:
             # Crear grafico con Plotly
             fig = go.Figure()
 
-            for municipio in municipios_seleccionados:
-                df_municipio = df_filtrado[df_filtrado['municipio'] == municipio]
+            for zona in zonas_seleccionadas:
+                df_zona = df_filtrado[df_filtrado[columna_zona] == zona]
                 fig.add_trace(go.Scatter(
-                    x=df_municipio['fecha'],
-                    y=df_municipio['valor'],
+                    x=df_zona['fecha'],
+                    y=df_zona['valor'],
                     mode='lines+markers',
-                    name=municipio,
+                    name=zona,
                     hovertemplate='<b>%{fullData.name}</b><br>' +
                                  'Fecha: %{x|%B %Y}<br>' +
                                  ylabel + ': %{y:.2f}<br>' +
@@ -432,17 +469,17 @@ try:
             st.markdown("---")
             st.subheader("📈 Estadisticas Resumidas")
 
-            cols = st.columns(len(municipios_seleccionados))
+            cols = st.columns(len(zonas_seleccionadas))
 
-            for idx, municipio in enumerate(municipios_seleccionados):
-                df_municipio = df_filtrado[df_filtrado['municipio'] == municipio]
+            for idx, zona in enumerate(zonas_seleccionadas):
+                df_zona = df_filtrado[df_filtrado[columna_zona] == zona]
 
                 with cols[idx]:
-                    st.markdown(f"**{municipio}**")
+                    st.markdown(f"**{zona}**")
 
                     if tipo_visualizacion == "Precio Absoluto":
-                        precio_actual = df_municipio['precio_m2'].iloc[-1]
-                        precio_anterior = df_municipio['precio_m2'].iloc[0]
+                        precio_actual = df_zona['precio_m2'].iloc[-1]
+                        precio_anterior = df_zona['precio_m2'].iloc[0]
                         variacion_total = ((precio_actual - precio_anterior) / precio_anterior) * 100
 
                         st.metric(
@@ -450,28 +487,29 @@ try:
                             value=f"{precio_actual:.2f} €/m²",
                             delta=f"{variacion_total:.2f}%"
                         )
-                        st.write(f"**Precio Minimo:** {df_municipio['precio_m2'].min():.2f} €/m²")
-                        st.write(f"**Precio Maximo:** {df_municipio['precio_m2'].max():.2f} €/m²")
-                        st.write(f"**Precio Medio:** {df_municipio['precio_m2'].mean():.2f} €/m²")
+                        st.write(f"**Precio Minimo:** {df_zona['precio_m2'].min():.2f} €/m²")
+                        st.write(f"**Precio Maximo:** {df_zona['precio_m2'].max():.2f} €/m²")
+                        st.write(f"**Precio Medio:** {df_zona['precio_m2'].mean():.2f} €/m²")
                     else:
-                        st.write(f"**Variacion Media:** {df_municipio['valor'].mean():.2f}%")
-                        st.write(f"**Variacion Minima:** {df_municipio['valor'].min():.2f}%")
-                        st.write(f"**Variacion Maxima:** {df_municipio['valor'].max():.2f}%")
+                        st.write(f"**Variacion Media:** {df_zona['valor'].mean():.2f}%")
+                        st.write(f"**Variacion Minima:** {df_zona['valor'].min():.2f}%")
+                        st.write(f"**Variacion Maxima:** {df_zona['valor'].max():.2f}%")
 
             # Tabla de datos
             st.markdown("---")
             with st.expander("📋 Ver tabla de datos"):
                 # Preparar tabla para mostrar
-                tabla_mostrar = df_filtrado[['municipio', 'fecha_texto', 'precio_m2']].copy()
+                tabla_mostrar = df_filtrado[[columna_zona, 'fecha_texto', 'precio_m2']].copy()
                 tabla_mostrar = tabla_mostrar.pivot(
                     index='fecha_texto',
-                    columns='municipio',
+                    columns=columna_zona,
                     values='precio_m2'
                 )
                 st.dataframe(tabla_mostrar, use_container_width=True)
 
         else:
-            st.warning("⚠️ Por favor, selecciona al menos un municipio para visualizar los datos.")
+            mensaje = "municipio" if tipo_zona == "Municipios" else "distrito"
+            st.warning(f"⚠️ Por favor, selecciona al menos un {mensaje} para visualizar los datos.")
 
 except FileNotFoundError:
     st.error("❌ No se encontro el archivo de datos. Asegurate de que existe 'data/precios_municipios_cantabria.csv'")
