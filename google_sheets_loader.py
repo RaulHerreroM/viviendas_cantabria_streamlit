@@ -102,6 +102,11 @@ def load_municipios_data():
         # Procesar datos
         df['fecha'] = pd.to_datetime(df['fecha'])
         df = df[df['precio_m2'] != '-']
+
+        # Convertir precio_m2 desde formato europeo (1.234,56) a número
+        # Eliminar puntos (separadores de miles) y reemplazar coma por punto
+        df['precio_m2'] = df['precio_m2'].str.replace('.', '', regex=False)
+        df['precio_m2'] = df['precio_m2'].str.replace(',', '.', regex=False)
         df['precio_m2'] = pd.to_numeric(df['precio_m2'], errors='coerce')
         df = df.dropna(subset=['precio_m2'])
 
@@ -135,6 +140,11 @@ def load_distritos_data():
         # Procesar datos
         df['fecha'] = pd.to_datetime(df['fecha'])
         df = df[df['precio_m2'] != '-']
+
+        # Convertir precio_m2 desde formato europeo (1.234,56) a número
+        # Eliminar puntos (separadores de miles) y reemplazar coma por punto
+        df['precio_m2'] = df['precio_m2'].str.replace('.', '', regex=False)
+        df['precio_m2'] = df['precio_m2'].str.replace(',', '.', regex=False)
         df['precio_m2'] = pd.to_numeric(df['precio_m2'], errors='coerce')
         df = df.dropna(subset=['precio_m2'])
 
