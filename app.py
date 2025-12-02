@@ -6,7 +6,7 @@ import folium
 from streamlit_folium import st_folium
 from comarcas_municipios import obtener_comarca
 from coordenadas_municipios import obtener_coordenadas
-from google_sheets_loader import load_municipios_data, load_distritos_data
+from s3_loader import load_municipios_data, load_distritos_data, load_geojson_municipios
 import json
 import unicodedata
 
@@ -44,9 +44,9 @@ def normalizar_municipio(nombre):
 st.title("📊 Precios del Metro Cuadrado en Cantabria")
 st.markdown("### Analisis de precios inmobiliarios por municipio")
 
-# Cargar datos desde Google Sheets
+# Cargar datos desde S3
 # Nota: Las funciones load_municipios_data() y load_distritos_data()
-# ya vienen con @st.cache_data del modulo google_sheets_loader
+# ya vienen con @st.cache_data del modulo s3_loader
 
 try:
     df = load_municipios_data()
@@ -74,9 +74,8 @@ try:
         # Obtener datos mas recientes por municipio
         df_reciente = df.sort_values('fecha').groupby('municipio').tail(1)
 
-        # Cargar GeoJSON de municipios
-        with open('data/municipios_cantabria.geojson', 'r', encoding='utf-8') as f:
-            geojson_municipios = json.load(f)
+        # Cargar GeoJSON de municipios desde S3
+        geojson_municipios = load_geojson_municipios()
 
         # Obtener todos los municipios del GeoJSON
         municipios_geojson = [f['properties']['NOMBRE'] for f in geojson_municipios['features']]
