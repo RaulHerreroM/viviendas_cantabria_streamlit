@@ -19,26 +19,52 @@ st.set_page_config(
 
 # Funcion para normalizar nombres de municipios
 def normalizar_municipio(nombre):
-    """Normaliza el nombre del municipio para hacer matching"""
+    """Normaliza el nombre del municipio para hacer matching con el GeoJSON"""
     if pd.isna(nombre):
         return nombre
 
-    # Remover acentos
-    nombre = ''.join(c for c in unicodedata.normalize('NFD', str(nombre))
-                     if unicodedata.category(c) != 'Mn')
+    nombre_str = str(nombre).strip()
 
-    # Casos especiales
-    mapeo = {
+    # Mapeo directo de nombres que difieren entre datos y GeoJSON
+    mapeo_exacto = {
+        # Formato "El X" -> "X (El)" y "Los X" -> "X (Los)"
         'El Astillero': 'Astillero (El)',
-        'Cabuerniga (Valle de)': 'Cabuerniga',
+        'Los Corrales de Buelna': 'Corrales de Buelna (Los)',
+
+        # Nombres con acentos diferentes
+        'Barcena de Cicero': 'Bárcena de Cicero',
+        'Cabezon de la Sal': 'Cabezón de la Sal',
         'Ribamontan al Mar': 'Ribamontán al Mar',
         'Ribamontan al Monte': 'Ribamontán al Monte',
-        'Penagos': 'Penagos',
-        'Penarrubia': 'Peñarrubia',
-        'Bareyo': 'Bareyo',
+        'Reocin': 'Reocín',
+        'Solorzano': 'Solórzano',
+        'Udias': 'Udías',
+        'Valdaliga': 'Valdáliga',
+        'Santa Maria de Cayon': 'Santa María de Cayón',
+        'Lierganes': 'Liérganes',
+        'Pielagos': 'Piélagos',
+
+        # Nombres de distritos/localidades que no son municipios oficiales
+        # Estos se mapean a sus municipios correspondientes
+        'Ajo': 'Bareyo',  # Ajo es una localidad de Bareyo
+        'Beranga': 'Bareyo',  # Beranga es parte de Bareyo
+        'Boo': 'Piélagos',  # Boo es parte de Piélagos
+        'Cudon': 'Miengo',  # Cudón es parte de Miengo
+        'Guarnizo': 'Camargo',  # Guarnizo es parte de Camargo
+        'Hoznayo': 'Entrambasaguas',  # Hoznayo es parte de Entrambasaguas
+        'Isla': 'Arnuero',  # Isla es parte de Arnuero
+        'Mogro': 'Miengo',  # Mogro es parte de Miengo
+        'Pontejos': 'Marina de Cudeyo',  # Pontejos es parte de Marina de Cudeyo
+        'Puente San Miguel': 'Reocín',  # Puente San Miguel es parte de Reocín
+        'Solares': 'Medio Cudeyo',  # Solares es parte de Medio Cudeyo
+        'Soto de la Marina': 'Marina de Cudeyo',  # Soto de la Marina es parte de Marina de Cudeyo
+        'Vargas': 'Puente Viesgo',  # Vargas es parte de Puente Viesgo
+
+        # Nombres con variaciones
+        'Campoo de Enmedio': 'Enmedio',
     }
 
-    return mapeo.get(nombre, nombre)
+    return mapeo_exacto.get(nombre_str, nombre_str)
 
 # Titulo principal
 st.title("📊 Precios del Metro Cuadrado en Cantabria")
