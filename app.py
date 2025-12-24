@@ -116,11 +116,12 @@ try:
         # Lista completa de todos los municipios
         todos_municipios = []
         municipios_sin_datos_count = 0
-
+        municipios_con_datos_count = 0
         for mun_geo in municipios_geojson:
             if mun_geo in municipios_con_datos:
                 # Municipio con datos
                 todos_municipios.append(municipios_con_datos[mun_geo])
+                municipios_con_datos_count += 1
             else:
                 # Municipio sin datos - asignar un precio especial para que aparezca gris
                 municipios_sin_datos_count += 1
@@ -131,6 +132,7 @@ try:
                     'comarca': 'Sin datos'
                 })
 
+        assert municipios_con_datos_count == len(municipios_con_datos)
         df_mapa_completo = pd.DataFrame(todos_municipios)
         municipios_sin_datos = municipios_sin_datos_count > 0
 
