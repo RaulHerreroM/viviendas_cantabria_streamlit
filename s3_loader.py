@@ -173,3 +173,50 @@ def load_geojson_municipios():
     except Exception as e:
         st.error(f"Error al cargar GeoJSON de municipios: {str(e)}")
         raise e
+
+@st.cache_data(ttl=600)
+def load_portales_data():
+    """
+    Carga datos de precios de portales de venta (Idealista + Fotocasa) desde S3
+    """
+    try:
+        # Cargar datos desde S3
+        df = load_parquet_from_s3('raw/precios_municipios_cantabria_portales_de_venta.parquet')
+
+        # Renombrar columna 'distrito' a 'municipio' si es necesario
+        if 'distrito' in df.columns and 'municipio' not in df.columns:
+            df = df.rename(columns={'distrito': 'municipio'})
+
+        # Renombrar columna de precio: puede ser precio_m2_medio o precio_m2
+        if 'precio_m2_medio' in df.columns:
+            df = df.rename(columns={'precio_m2_medio': 'precio_m2'})
+        elif 'precio_m2_mediano' in df.columns and 'precio_m2' not in df.columns:
+            df = df.rename(columns={'precio_m2_mediano': 'precio_m2'})
+
+        # Procesar fecha si existe
+        if 'fecha' in df.columns:
+            df['fecha'] = pd.to_datetime(df['fecha'])
+            # Generar fecha_texto si no existe
+            if 'fecha_texto' not in df.columns:
+                df['fecha_texto'] = df['fecha'].dt.strftime('%Y-%m')
+        else:
+            # Si no hay fecha, crear una fecha ficticia (datos actuales)
+            import datetime
+            df['fecha'] = pd.to_datetime(datetime.date.today())
+            df['fecha_texto'] = df['fecha'].dt.strftime('%Y-%m')
+
+        # El parquet ya deberia tener precio_m2 como numerico
+        # pero lo verificamos por si acaso
+        if 'precio_m2' in df.columns:
+            if df['precio_m2'].dtype == 'object':
+                df['precio_m2'] = pd.to_numeric(df['precio_m2'], errors='coerce')
+
+            df = df.dropna(subset=['precio_m2'])
+        else:
+            raise ValueError("No se encontro columna de precio (precio_m2, precio_m2_medio o precio_m2_mediano)")
+
+        return df
+
+    except Exception as e:
+        st.error(f"Error al procesar datos de portales: {str(e)}")
+        raise e
