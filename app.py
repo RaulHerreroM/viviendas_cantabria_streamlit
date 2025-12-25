@@ -6,7 +6,7 @@ import folium
 from streamlit_folium import st_folium
 from comarcas_municipios import obtener_comarca
 from coordenadas_municipios import obtener_coordenadas
-from s3_loader import load_municipios_data, load_distritos_data, load_geojson_municipios
+from s3_loader import load_municipios_data, load_distritos_data, load_geojson_municipios, load_portales_data
 import json
 import unicodedata
 
@@ -77,9 +77,11 @@ st.markdown("### Analisis de precios inmobiliarios por municipio")
 try:
     df = load_municipios_data()
     df_distritos = load_distritos_data()
+    df_portales = load_portales_data()
 
     # Agregar comarca a cada municipio
     df['comarca'] = df['municipio'].apply(obtener_comarca)
+    df_portales['comarca'] = df_portales['municipio'].apply(obtener_comarca)
 
     # Obtener lista de municipios disponibles (solo los que tienen datos)
     municipios_disponibles = sorted(df['municipio'].unique())
@@ -91,7 +93,7 @@ try:
     # Selector de vista
     vista = st.sidebar.radio(
         "Selecciona vista:",
-        options=["Mapa Geografico", "Mapa de Comarcas", "Series Temporales"]
+        options=["Mapa Geografico", "Mapa de Comarcas", "Mapa Portales", "Series Temporales"]
     )
 
     if vista == "Mapa Geografico":
@@ -374,6 +376,311 @@ try:
                 for _, row in municipios_comarca.iterrows():
                     st.write(f"- {row['municipio']}: {row['precio_m2']:.2f} €/m²")
                 st.markdown("---")
+
+    elif vista == "Mapa Portales":
+        st.subheader("🗺️ Mapa de Precios en Portales de Venta (Idealista + Fotocasa)")
+
+        # A. Preparación de Datos
+        # Obtener datos mas recientes para portales y catastro
+        df_portales_reciente = df_portales.sort_values('fecha').groupby('municipio').tail(1)
+        df_cadastral_reciente = df.sort_values('fecha').groupby('municipio').tail(1)
+
+        # Eliminar duplicados por si acaso (tomando el último registro)
+        df_portales_reciente = df_portales_reciente.drop_duplicates(subset=['municipio'], keep='last')
+        df_cadastral_reciente = df_cadastral_reciente.drop_duplicates(subset=['municipio'], keep='last')
+
+        # Cargar GeoJSON de municipios desde S3
+        geojson_municipios = load_geojson_municipios()
+        municipios_geojson = [f['properties']['NOMBRE'] for f in geojson_municipios['features']]
+
+        # Preparar datos de portales con normalizacion
+        df_portales_mapa = df_portales_reciente[['municipio', 'precio_m2', 'comarca']].copy()
+        df_portales_mapa['municipio_norm'] = df_portales_mapa['municipio'].apply(normalizar_municipio)
+        df_portales_mapa = df_portales_mapa.rename(columns={'precio_m2': 'precio_portales'})
+
+        # Eliminar duplicados después de normalización
+        df_portales_mapa = df_portales_mapa.drop_duplicates(subset=['municipio_norm'], keep='last')
+
+        # Preparar datos catastrales con normalizacion
+        df_cadastral_mapa = df_cadastral_reciente[['municipio', 'precio_m2']].copy()
+        df_cadastral_mapa['municipio_norm'] = df_cadastral_mapa['municipio'].apply(normalizar_municipio)
+        df_cadastral_mapa = df_cadastral_mapa.rename(columns={'precio_m2': 'precio_catastro'})
+
+        # Eliminar duplicados después de normalización
+        df_cadastral_mapa = df_cadastral_mapa.drop_duplicates(subset=['municipio_norm'], keep='last')
+
+        # Merge datasets (LEFT join para mantener todos los datos de portales)
+        df_merged = pd.merge(
+            df_portales_mapa,
+            df_cadastral_mapa[['municipio_norm', 'precio_catastro']],
+            on='municipio_norm',
+            how='left'
+        )
+
+        # Calcular metricas de comparacion
+        df_merged['diferencia_absoluta'] = df_merged['precio_portales'] - df_merged['precio_catastro']
+        df_merged['diferencia_porcentual'] = (
+            (df_merged['precio_portales'] - df_merged['precio_catastro']) /
+            df_merged['precio_catastro'] * 100
+        ).round(2)
+
+        # Crear texto de comparacion para hover
+        def crear_texto_comparacion(row):
+            if pd.isna(row['precio_catastro']):
+                return "Sin datos catastrales"
+            diff_pct = row['diferencia_porcentual']
+            if diff_pct > 0:
+                return f"+{diff_pct:.1f}% mas caro que catastro"
+            elif diff_pct < 0:
+                return f"{diff_pct:.1f}% mas barato que catastro"
+            else:
+                return "Igual que catastro"
+
+        df_merged['texto_comparacion'] = df_merged.apply(crear_texto_comparacion, axis=1)
+
+        # B. Dataset Completo con Todos los Municipios del GeoJSON
+        municipios_con_datos = dict(zip(df_merged['municipio_norm'], df_merged.to_dict('records')))
+
+        todos_municipios = []
+        municipios_sin_datos_count = 0
+        municipios_con_datos_count = 0
+
+        for mun_geo in municipios_geojson:
+            if mun_geo in municipios_con_datos:
+                todos_municipios.append(municipios_con_datos[mun_geo])
+                municipios_con_datos_count += 1
+            else:
+                municipios_sin_datos_count += 1
+                todos_municipios.append({
+                    'municipio': mun_geo,
+                    'municipio_norm': mun_geo,
+                    'precio_portales': -1,
+                    'precio_catastro': None,
+                    'comarca': 'Sin datos',
+                    'diferencia_porcentual': None,
+                    'texto_comparacion': 'Sin datos'
+                })
+
+        df_mapa_completo = pd.DataFrame(todos_municipios)
+        municipios_sin_datos = municipios_sin_datos_count > 0
+
+        # C. Crear Mapa Choropleth Principal
+        # Calcular rango de precios para la escala de color (excluyendo -1)
+        precio_min_real = df_merged['precio_portales'].min()
+        precio_max_real = df_merged['precio_portales'].max()
+
+        # Escala de color personalizada: gris para sin datos, verde-amarillo-rojo para precios
+        colorscale = [
+            [0, 'lightgray'],
+            [0.001, 'lightgray'],
+            [0.001, '#2d7f2e'],  # Verde (barato)
+            [0.5, '#ffeb84'],     # Amarillo (medio)
+            [1.0, '#d73027']      # Rojo (caro)
+        ]
+
+        # Crear mapa coropletico
+        fig_choropleth = px.choropleth_mapbox(
+            df_mapa_completo,
+            geojson=geojson_municipios,
+            locations='municipio_norm',
+            featureidkey="properties.NOMBRE",
+            color='precio_portales',
+            color_continuous_scale=colorscale,
+            range_color=(-1, precio_max_real),
+            mapbox_style="carto-positron",
+            zoom=7.8,
+            center={"lat": 43.25, "lon": -4.0},
+            opacity=0.8,
+            labels={'precio_portales': 'Precio Portales €/m²'},
+            hover_name='municipio',
+            hover_data={
+                'municipio': False,
+                'precio_portales': ':.2f',
+                'precio_catastro': ':.2f',
+                'comarca': True,
+                'texto_comparacion': True,
+                'municipio_norm': False,
+                'diferencia_porcentual': False
+            }
+        )
+
+        # Actualizar bordes de los municipios
+        fig_choropleth.update_traces(
+            marker_line_width=1.5,
+            marker_line_color='white'
+        )
+
+        # Ajustar la barra de colores
+        fig_choropleth.update_coloraxes(
+            colorbar=dict(
+                tickvals=[precio_min_real, (precio_min_real + precio_max_real) / 2, precio_max_real],
+                ticktext=[f'{precio_min_real:.0f}', f'{(precio_min_real + precio_max_real) / 2:.0f}', f'{precio_max_real:.0f}']
+            )
+        )
+
+        fig_choropleth.update_layout(
+            margin={"r": 0, "t": 0, "l": 0, "b": 0},
+            height=650
+        )
+
+        st.plotly_chart(fig_choropleth, use_container_width=True)
+
+        # Mensajes de informacion
+        if municipios_sin_datos:
+            st.info(f"ℹ️ {municipios_sin_datos_count} municipios no tienen datos de portales y aparecen en gris.")
+
+        st.markdown("""
+        **Cómo leer este mapa:**
+        - Muestra precios de **portales de venta** (Idealista + Fotocasa)
+        - 🔴 **Rojo**: Municipios con precios más altos
+        - 🟡 **Amarillo**: Municipios con precios medios
+        - 🟢 **Verde**: Municipios con precios más bajos
+        - ⚪ **Gris**: Municipios sin datos de portales
+        - Pasa el ratón para ver la **comparación con datos catastrales**
+        - Puedes hacer zoom y desplazarte por el mapa
+        """)
+
+        # D. Grafico de Barras de Comparacion
+        st.markdown("---")
+        st.subheader("📊 Análisis de Diferencias: Portales vs. Catastro")
+
+        # Filtrar municipios con ambos datasets
+        df_comparacion = df_merged[df_merged['precio_catastro'].notna()].copy()
+        df_comparacion = df_comparacion.sort_values('diferencia_porcentual', ascending=False)
+
+        # Crear grafico de barras de comparacion
+        fig_comparison = px.bar(
+            df_comparacion,
+            x='diferencia_porcentual',
+            y='municipio',
+            orientation='h',
+            color='diferencia_porcentual',
+            color_continuous_scale=['#2d7f2e', '#ffeb84', '#d73027'],
+            color_continuous_midpoint=0,
+            title='Diferencia Porcentual: Portales vs. Catastro por Municipio',
+            labels={
+                'diferencia_porcentual': 'Diferencia (%)',
+                'municipio': 'Municipio'
+            },
+            hover_data={
+                'precio_portales': ':.2f',
+                'precio_catastro': ':.2f'
+            }
+        )
+
+        fig_comparison.update_layout(
+            height=800,
+            xaxis_title="Diferencia Porcentual (%)",
+            yaxis_title=""
+        )
+
+        st.plotly_chart(fig_comparison, use_container_width=True)
+
+        # E. Estadisticas Resumen
+        st.markdown("---")
+        col1, col2, col3, col4 = st.columns(4)
+
+        with col1:
+            st.metric(
+                "Municipios con datos portales",
+                len(df_portales_reciente)
+            )
+
+        with col2:
+            st.metric(
+                "Precio Medio Portales",
+                f"{df_merged['precio_portales'][df_merged['precio_portales'] > 0].mean():.2f} €/m²"
+            )
+
+        with col3:
+            precio_medio_catastro = df_merged['precio_catastro'].mean()
+            st.metric(
+                "Precio Medio Catastro",
+                f"{precio_medio_catastro:.2f} €/m²"
+            )
+
+        with col4:
+            diferencia_media = df_comparacion['diferencia_porcentual'].mean()
+            st.metric(
+                "Diferencia Media",
+                f"{diferencia_media:.1f}%",
+                delta=f"{diferencia_media:.1f}%"
+            )
+
+        # F. Listas Top 10
+        st.markdown("---")
+        col1, col2 = st.columns(2)
+
+        with col1:
+            st.subheader("📈 Top 10 Municipios Más Caros (Portales)")
+            top_caros = df_merged[df_merged['precio_portales'] > 0].nlargest(10, 'precio_portales')
+            for idx, row in top_caros.iterrows():
+                st.write(
+                    f"**{row['municipio']}** ({row['comarca']}): "
+                    f"{row['precio_portales']:.2f} €/m² "
+                    f"({row['texto_comparacion']})"
+                )
+
+        with col2:
+            st.subheader("📉 Top 10 Mayores Diferencias con Catastro")
+            top_diferencias = df_comparacion.nlargest(10, 'diferencia_porcentual')
+            for idx, row in top_diferencias.iterrows():
+                st.write(
+                    f"**{row['municipio']}**: "
+                    f"{row['diferencia_porcentual']:.1f}% mas caro "
+                    f"({row['precio_portales']:.0f} vs {row['precio_catastro']:.0f} €/m²)"
+                )
+
+        # G. Scatter Plot de Correlacion
+        st.markdown("---")
+        st.subheader("📊 Correlación Portales vs. Catastro")
+
+        fig_scatter = px.scatter(
+            df_comparacion,
+            x='precio_catastro',
+            y='precio_portales',
+            color='diferencia_porcentual',
+            size='precio_portales',
+            hover_name='municipio',
+            hover_data={
+                'comarca': True,
+                'precio_catastro': ':.2f',
+                'precio_portales': ':.2f',
+                'diferencia_porcentual': ':.1f'
+            },
+            color_continuous_scale='RdYlGn_r',
+            labels={
+                'precio_catastro': 'Precio Catastro (€/m²)',
+                'precio_portales': 'Precio Portales (€/m²)',
+                'diferencia_porcentual': 'Diferencia (%)'
+            },
+            title='Comparación: Precios Portales vs. Catastro'
+        )
+
+        # Añadir linea de referencia diagonal (donde los precios serian iguales)
+        min_precio = min(df_comparacion['precio_catastro'].min(), df_comparacion['precio_portales'].min())
+        max_precio = max(df_comparacion['precio_catastro'].max(), df_comparacion['precio_portales'].max())
+
+        fig_scatter.add_trace(
+            go.Scatter(
+                x=[min_precio, max_precio],
+                y=[min_precio, max_precio],
+                mode='lines',
+                name='Referencia (Precios Iguales)',
+                line=dict(dash='dash', color='gray')
+            )
+        )
+
+        fig_scatter.update_layout(height=600)
+
+        st.plotly_chart(fig_scatter, use_container_width=True)
+
+        st.markdown("""
+        **Interpretación:**
+        - Puntos **por encima** de la línea gris: Portales más caros que catastro
+        - Puntos **por debajo** de la línea gris: Portales más baratos que catastro
+        - Puntos **cerca de la línea**: Precios similares entre ambas fuentes
+        """)
 
     else:  # Series Temporales
         # Selector de tipo de zona
