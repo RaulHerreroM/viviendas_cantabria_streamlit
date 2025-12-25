@@ -548,6 +548,11 @@ try:
         df_comparacion = df_merged[df_merged['precio_catastro'].notna()].copy()
         df_comparacion = df_comparacion.sort_values('diferencia_porcentual', ascending=False)
 
+        # Convertir a float nativo para compatibilidad con Plotly en produccion
+        df_comparacion['precio_portales'] = df_comparacion['precio_portales'].astype(float)
+        df_comparacion['precio_catastro'] = df_comparacion['precio_catastro'].astype(float)
+        df_comparacion['diferencia_porcentual'] = df_comparacion['diferencia_porcentual'].astype(float)
+
         # Crear grafico de barras de comparacion
         fig_comparison = px.bar(
             df_comparacion,
@@ -635,8 +640,14 @@ try:
         st.markdown("---")
         st.subheader("📊 Correlación Portales vs. Catastro")
 
+        # Preparar datos para el scatter plot (convertir a float nativo para compatibilidad)
+        df_scatter = df_comparacion.copy()
+        df_scatter['precio_catastro'] = df_scatter['precio_catastro'].astype(float)
+        df_scatter['precio_portales'] = df_scatter['precio_portales'].astype(float)
+        df_scatter['diferencia_porcentual'] = df_scatter['diferencia_porcentual'].astype(float)
+
         fig_scatter = px.scatter(
-            df_comparacion,
+            df_scatter,
             x='precio_catastro',
             y='precio_portales',
             color='diferencia_porcentual',
@@ -658,8 +669,8 @@ try:
         )
 
         # Añadir linea de referencia diagonal (donde los precios serian iguales)
-        min_precio = min(df_comparacion['precio_catastro'].min(), df_comparacion['precio_portales'].min())
-        max_precio = max(df_comparacion['precio_catastro'].max(), df_comparacion['precio_portales'].max())
+        min_precio = float(min(df_scatter['precio_catastro'].min(), df_scatter['precio_portales'].min()))
+        max_precio = float(max(df_scatter['precio_catastro'].max(), df_scatter['precio_portales'].max()))
 
         fig_scatter.add_trace(
             go.Scatter(
