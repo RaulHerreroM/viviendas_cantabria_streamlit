@@ -9,6 +9,12 @@ from coordenadas_municipios import obtener_coordenadas
 from s3_loader import load_municipios_data, load_distritos_data, load_geojson_municipios, load_portales_data
 import json
 import unicodedata
+import requests
+import os
+from dotenv import load_dotenv
+
+# Cargar variables de entorno
+load_dotenv()
 
 # Configuracion de la pagina
 st.set_page_config(
@@ -93,7 +99,7 @@ try:
     # Selector de vista
     vista = st.sidebar.radio(
         "Selecciona vista:",
-        options=["Mapa Geografico", "Mapa de Comarcas", "Mapa Portales", "Series Temporales"]
+        options=["Mapa Geografico", "Mapa de Comarcas", "Mapa Portales", "Series Temporales", "Prediccion"]
     )
 
     if vista == "Mapa Geografico":
@@ -692,6 +698,156 @@ try:
         - Puntos **por debajo** de la línea gris: Portales más baratos que catastro
         - Puntos **cerca de la línea**: Precios similares entre ambas fuentes
         """)
+
+    elif vista == "Prediccion":
+        st.subheader("🔮 Predicción de Precio de Vivienda")
+
+        # Pedir API key al usuario
+        api_key = st.text_input("🔑 API Key *", type="password", help="Introduce tu API key para acceder a las predicciones")
+
+        if not api_key:
+            st.warning("⚠️ Introduce tu API key para poder realizar predicciones.")
+            st.stop()
+
+        st.markdown("Introduce las características del inmueble para obtener una estimación de precio.")
+
+        # Lista de municipios de Cantabria
+        municipios_prediccion = [
+            "Santander", "Torrelavega", "Castro Urdiales", "Camargo", "Piélagos",
+            "El Astillero", "Laredo", "Santoña", "Los Corrales de Buelna", "Santa Cruz de Bezana",
+            "Reinosa", "Cabezón de la Sal", "Colindres", "Medio Cudeyo", "Reocín",
+            "Marina de Cudeyo", "Suances", "Noja", "San Vicente de la Barquera", "Ampuero",
+            "Villaescusa", "Bárcena de Cicero", "Ribamontán al Mar", "Entrambasaguas", "Polanco",
+            "Ramales de la Victoria", "Comillas", "Val de San Vicente", "Limpias", "Miengo"
+        ]
+
+        # Formulario de predicción
+        col1, col2, col3 = st.columns(3)
+
+        with col1:
+            st.markdown("**📐 Características básicas**")
+            m2_construidos = st.number_input("M² construidos *", min_value=20, max_value=1000, value=100)
+            habitaciones = st.number_input("Habitaciones", min_value=1, max_value=10, value=2)
+            banos = st.number_input("Baños", min_value=1, max_value=5, value=1)
+            municipio = st.selectbox("Municipio", options=[""] + municipios_prediccion)
+            tipo_inmueble = st.selectbox("Tipo de inmueble", options=["piso", "chalet", "adosado", "duplex"])
+
+        with col2:
+            st.markdown("**🏗️ Estado y antigüedad**")
+            estado = st.selectbox("Estado", options=["", "buen_estado", "a_reformar", "nuevo"])
+            antiguedad_anios = st.number_input("Antigüedad (años)", min_value=0, max_value=100, value=15)
+            planta = st.selectbox("Planta", options=["", "bajo", "1", "2", "3", "4", "5", "atico"])
+            orientacion = st.selectbox("Orientación", options=["", "norte", "sur", "este", "oeste"])
+            calificacion_energetica = st.selectbox("Calificación energética", options=["", "A", "B", "C", "D", "E", "F", "G"])
+
+        with col3:
+            st.markdown("**🏊 Extras**")
+            terraza = st.selectbox("Terraza", options=["", "si", "no", "desconocido"])
+            garaje = st.selectbox("Garaje", options=["", "si", "no", "desconocido"])
+            ascensor = st.selectbox("Ascensor", options=["", "si", "no", "desconocido"])
+            piscina = st.selectbox("Piscina", options=["", "si", "no"])
+            gas_natural = st.selectbox("Gas natural", options=["", "si", "no"])
+            amueblado = st.selectbox("Amueblado", options=["", "si", "no"])
+
+        st.markdown("---")
+
+        # Botón de predicción
+        if st.button("🔮 Obtener Predicción", type="primary", use_container_width=True):
+            # Construir payload solo con campos con valor
+            payload = {"m2_construidos": m2_construidos}
+
+            if habitaciones:
+                payload["habitaciones"] = habitaciones
+            if banos:
+                payload["banos"] = banos
+            if municipio:
+                payload["municipio"] = municipio
+            if tipo_inmueble:
+                payload["tipo_inmueble"] = tipo_inmueble
+            if estado:
+                payload["estado"] = estado
+            if antiguedad_anios:
+                payload["antiguedad_anios"] = antiguedad_anios
+            if terraza:
+                payload["terraza"] = terraza
+            if garaje:
+                payload["garaje"] = garaje
+            if ascensor:
+                payload["ascensor"] = ascensor
+            if piscina:
+                payload["piscina"] = piscina
+            if planta:
+                payload["planta"] = planta
+            if gas_natural:
+                payload["gas_natural"] = gas_natural
+            if amueblado:
+                payload["amueblado"] = amueblado
+            if orientacion:
+                payload["orientacion"] = orientacion
+            if calificacion_energetica:
+                payload["calificacion_energetica"] = calificacion_energetica
+
+            # URL de la API
+            api_url = "https://nlv0wy2dj3.execute-api.eu-west-1.amazonaws.com/prod/predict"
+
+            with st.spinner("Calculando predicción..."):
+                try:
+                    headers = {
+                        "Content-Type": "application/json",
+                        "x-api-key": api_key
+                    }
+
+                    response = requests.post(api_url, json=payload, headers=headers, timeout=30)
+
+                    if response.status_code == 200:
+                        resultado = response.json()
+
+                        # Mostrar resultado
+                        st.markdown("---")
+                        st.markdown("## 📊 Resultado de la Predicción")
+
+                        col_res1, col_res2, col_res3 = st.columns(3)
+
+                        with col_res1:
+                            if "precio_estimado" in resultado:
+                                precio = resultado["precio_estimado"]
+                                st.metric("💰 Precio Estimado", f"{precio:,.0f} €")
+
+                        with col_res2:
+                            if "precio_m2" in resultado:
+                                precio_m2 = resultado["precio_m2"]
+                                st.metric("📐 Precio por m²", f"{precio_m2:,.0f} €/m²")
+
+                        with col_res3:
+                            if "confianza" in resultado:
+                                confianza = resultado["confianza"]
+                                st.metric("📈 Confianza", f"{confianza}%")
+
+                        # Mostrar rango si existe
+                        if "rango_min" in resultado and "rango_max" in resultado:
+                            st.info(f"📊 Rango estimado: **{resultado['rango_min']:,.0f} €** - **{resultado['rango_max']:,.0f} €**")
+
+                        # Mostrar detalles de la predicción
+                        with st.expander("📋 Ver detalles de la consulta"):
+                            st.json(payload)
+                            st.json(resultado)
+
+                    elif response.status_code == 403:
+                        st.error("❌ API Key inválida. Verifica tu clave de acceso.")
+                    else:
+                        st.error(f"❌ Error en la API: {response.status_code}")
+                        st.error(f"Detalle: {response.text}")
+
+                except requests.exceptions.Timeout:
+                    st.error("❌ Timeout: La API tardó demasiado en responder.")
+                except requests.exceptions.RequestException as e:
+                    st.error(f"❌ Error de conexión: {str(e)}")
+                except Exception as e:
+                    st.error(f"❌ Error inesperado: {str(e)}")
+
+        # Información adicional
+        st.markdown("---")
+        st.caption("* Campo obligatorio. Los demás campos son opcionales pero mejoran la precisión de la predicción.")
 
     else:  # Series Temporales
         # Selector de tipo de zona

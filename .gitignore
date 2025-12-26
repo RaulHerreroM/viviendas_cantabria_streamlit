@@ -9,3 +9,5 @@ __pycache__/
 # Credenciales de Google Cloud
 *.json
 !data/*.json
+
+.env
