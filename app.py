@@ -711,15 +711,43 @@ try:
 
         st.markdown("Introduce las características del inmueble para obtener una estimación de precio.")
 
-        # Lista de municipios de Cantabria
-        municipios_prediccion = [
-            "Santander", "Torrelavega", "Castro Urdiales", "Camargo", "Piélagos",
-            "El Astillero", "Laredo", "Santoña", "Los Corrales de Buelna", "Santa Cruz de Bezana",
-            "Reinosa", "Cabezón de la Sal", "Colindres", "Medio Cudeyo", "Reocín",
-            "Marina de Cudeyo", "Suances", "Noja", "San Vicente de la Barquera", "Ampuero",
-            "Villaescusa", "Bárcena de Cicero", "Ribamontán al Mar", "Entrambasaguas", "Polanco",
-            "Ramales de la Victoria", "Comillas", "Val de San Vicente", "Limpias", "Miengo"
-        ]
+        # Lista completa de municipios de Cantabria
+        municipios_prediccion = sorted([
+            # Santander y Bahía
+            "Santander", "Camargo", "El Astillero", "Santa Cruz de Bezana", "Piélagos",
+            "Villaescusa", "Santa Maria de Cayon", "Miengo", "Castañeda",
+            # Trasmiera
+            "Arnuero", "Bareyo", "Escalante", "Meruelo", "Noja", "Ribamontan al Mar",
+            "Ribamontan al Monte", "Solares", "Marina de Cudeyo", "Medio Cudeyo",
+            "Entrambasaguas", "Hoznayo", "Liérganes", "Penagos", "Riotuerto",
+            "Soto de la Marina", "Miera",
+            # Asón-Agüera
+            "Ampuero", "Arredondo", "Guriezo", "Liendo", "Rasines",
+            "Ramales de la Victoria", "Ruesga", "Soba", "Solorzano", "Voto",
+            # Costa Oriental
+            "Castro-Urdiales", "Laredo", "Colindres", "Limpias", "Santoña",
+            "Barcena de Cicero", "Argoños", "Hazas de Cesto",
+            # Valles Pasiegos
+            "San Roque de Riomiera", "San Pedro del Romeral", "Vega de Pas",
+            "Selaya", "Villacarriedo", "Corvera de Toranzo", "Santiurde de Toranzo",
+            # Costa Occidental
+            "Alfoz de Lloredo", "Comillas", "Ruiloba", "San Vicente de la Barquera",
+            "Santillana del Mar", "Suances", "Udias", "Val de San Vicente", "Valdaliga", "Reocin",
+            # Saja-Nansa
+            "Cabuérniga", "Cabezon de la Sal", "Herrerias", "Lamason", "Mazcuerras",
+            "Polaciones", "Rionansa", "Ruente", "Los Tojos", "Tudanca",
+            # Besaya
+            "Torrelavega", "Cartes", "Los Corrales de Buelna", "Cieza",
+            "San Felices de Buelna", "Polanco", "Barcena de Pie de Concha",
+            "Molledo", "Arenas de Iguña", "Anievas", "Puente Viesgo",
+            # Campoo-Los Valles
+            "Reinosa", "Campoo de Enmedio", "Campoo de Yuso", "Hermandad de Campoo de Suso",
+            "Las Rozas", "Luena", "Pesaguero", "Pesquera", "San Miguel de Aguayo",
+            "Santiurde de Reinosa", "Valdeolea", "Valdeprado del Río", "Valderredible",
+            # Liébana
+            "Potes", "Cabezon de Liébana", "Camaleño", "Cillorigo", "Peñarrubia",
+            "Tresviso", "Vega de Liébana",
+        ])
 
         # Formulario de predicción
         col1, col2, col3 = st.columns(3)
