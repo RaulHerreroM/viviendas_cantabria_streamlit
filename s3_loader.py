@@ -220,3 +220,37 @@ def load_portales_data():
     except Exception as e:
         st.error(f"Error al procesar datos de portales: {str(e)}")
         raise e
+
+@st.cache_data(ttl=600)
+def load_secciones_santander_portales_data():
+    """
+    Carga datos de precios por secciones censales de Santander (Portales)
+    """
+    try:
+        df = load_parquet_from_s3('raw/precios_secciones_santander_portales_de_venta.parquet')
+
+        # Renombrar precio_m2_medio a precio_m2 para consistencia
+        if 'precio_m2_medio' in df.columns:
+            df = df.rename(columns={'precio_m2_medio': 'precio_m2'})
+
+        # Asegurar tipos correctos
+        if df['precio_m2'].dtype == 'object':
+            df['precio_m2'] = pd.to_numeric(df['precio_m2'], errors='coerce')
+
+        df = df.dropna(subset=['precio_m2'])
+        return df
+
+    except Exception as e:
+        st.error(f"Error al procesar datos de secciones Santander: {str(e)}")
+        raise e
+
+@st.cache_data(ttl=600)
+def load_geojson_santander():
+    """
+    Carga el archivo GeoJSON de secciones censales de Santander
+    """
+    try:
+        return load_json_from_s3('raw/santander.geojson')
+    except Exception as e:
+        st.error(f"Error al cargar GeoJSON de Santander: {str(e)}")
+        raise e

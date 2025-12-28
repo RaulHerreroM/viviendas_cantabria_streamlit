@@ -6,7 +6,7 @@ import folium
 from streamlit_folium import st_folium
 from comarcas_municipios import obtener_comarca
 from coordenadas_municipios import obtener_coordenadas
-from s3_loader import load_municipios_data, load_distritos_data, load_geojson_municipios, load_portales_data
+from s3_loader import load_municipios_data, load_distritos_data, load_geojson_municipios, load_portales_data, load_secciones_santander_portales_data, load_geojson_santander
 import json
 import unicodedata
 import requests
@@ -99,7 +99,7 @@ try:
     # Selector de vista
     vista = st.sidebar.radio(
         "Selecciona vista:",
-        options=["Mapa Geografico", "Mapa de Comarcas", "Mapa Portales", "Series Temporales", "Prediccion"]
+        options=["Mapa Geografico", "Mapa de Comarcas", "Mapa Portales", "Mapa Santander Portales", "Series Temporales", "Prediccion"]
     )
 
     if vista == "Mapa Geografico":
@@ -699,6 +699,89 @@ try:
         - Puntos **cerca de la línea**: Precios similares entre ambas fuentes
         """)
 
+    elif vista == "Mapa Santander Portales":
+        st.subheader("🗺️ Mapa de Precios por Sección Censal - Santander (Portales)")
+
+        # Cargar datos
+        df_secciones = load_secciones_santander_portales_data()
+        geojson_santander = load_geojson_santander()
+
+        # Crear campo para matching: añadir prefijo 39075 al código de sección
+        df_secciones['seccion_completa'] = '39075' + df_secciones['seccion']
+
+        # Obtener todas las secciones del GeoJSON
+        secciones_geojson = [f['properties']['seccion'] for f in geojson_santander['features']]
+
+        # Preparar datos para el mapa
+        secciones_con_datos = dict(zip(df_secciones['seccion_completa'], df_secciones.to_dict('records')))
+
+        todos_registros = []
+        for seccion_geo in secciones_geojson:
+            if seccion_geo in secciones_con_datos:
+                registro = secciones_con_datos[seccion_geo].copy()
+                registro['seccion_geo'] = seccion_geo
+                todos_registros.append(registro)
+            else:
+                todos_registros.append({
+                    'seccion': seccion_geo[-5:],
+                    'seccion_completa': seccion_geo,
+                    'seccion_geo': seccion_geo,
+                    'precio_m2': -1,
+                    'distrito': 'Sin datos',
+                    'num_viviendas': 0
+                })
+
+        df_mapa = pd.DataFrame(todos_registros)
+
+        # Escala de color
+        precio_min_real = df_mapa[df_mapa['precio_m2'] > 0]['precio_m2'].min()
+        precio_max_real = df_mapa['precio_m2'].max()
+
+        colorscale = [
+            [0, 'lightgray'],
+            [0.001, 'lightgray'],
+            [0.001, '#2d7f2e'],
+            [0.5, '#ffeb84'],
+            [1.0, '#d73027']
+        ]
+
+        # Crear mapa
+        fig = px.choropleth_mapbox(
+            df_mapa,
+            geojson=geojson_santander,
+            locations='seccion_geo',
+            featureidkey="properties.seccion",
+            color='precio_m2',
+            color_continuous_scale=colorscale,
+            range_color=(-1, precio_max_real),
+            mapbox_style="carto-positron",
+            zoom=12,
+            center={"lat": 43.46, "lon": -3.81},
+            opacity=0.8,
+            labels={'precio_m2': 'Precio €/m²'},
+            hover_name='seccion',
+            hover_data={
+                'seccion_geo': False,
+                'precio_m2': ':.2f',
+                'distrito': True,
+                'num_viviendas': True
+            }
+        )
+
+        fig.update_traces(marker_line_width=1, marker_line_color='white')
+        fig.update_layout(margin={"r": 0, "t": 0, "l": 0, "b": 0}, height=650)
+
+        st.plotly_chart(fig, use_container_width=True)
+
+        # Métricas resumen
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            st.metric("Precio medio", f"{df_secciones['precio_m2'].mean():,.0f} €/m²")
+        with col2:
+            st.metric("Secciones con datos", f"{len(df_secciones)}")
+        with col3:
+            st.metric("Precio máximo", f"{precio_max_real:,.0f} €/m²")
+
     elif vista == "Prediccion":
         st.subheader("🔮 Predicción de Precio de Vivienda")
 
@@ -759,6 +842,8 @@ try:
             banos = st.number_input("Baños", min_value=1, max_value=5, value=1)
             municipio = st.selectbox("Municipio", options=[""] + municipios_prediccion)
             tipo_inmueble = st.selectbox("Tipo de inmueble", options=["piso", "chalet", "adosado", "duplex"])
+            latitud = st.number_input("latitud", min_value=42.5, max_value=43.6, value=None, format="%.6f", help="Coordenada de latitud (ej: 43.462306)")
+            longitud = st.number_input("longitud", min_value=-4.9, max_value=-3.1, value=None, format="%.6f", help="Coordenada de longitud (ej: -3.809980)")
 
         with col2:
             st.markdown("**🏗️ Estado y antigüedad**")
@@ -814,6 +899,10 @@ try:
                 payload["orientacion"] = orientacion
             if calificacion_energetica:
                 payload["calificacion_energetica"] = calificacion_energetica
+            if latitud is not None:
+                payload["latitud"] = latitud
+            if longitud is not None:
+                payload["longitud"] = longitud
 
             # URL de la API
             api_url = "https://nlv0wy2dj3.execute-api.eu-west-1.amazonaws.com/prod/predict"
