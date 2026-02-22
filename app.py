@@ -74,7 +74,7 @@ def normalizar_municipio(nombre):
 
 # Titulo principal
 st.title("📊 Precios del Metro Cuadrado en Cantabria")
-st.markdown("### Analisis de precios inmobiliarios por municipio")
+st.markdown("### Análisis de precios inmobiliarios por municipio")
 
 # Cargar datos desde S3
 # Nota: Las funciones load_municipios_data() y load_distritos_data()
@@ -94,16 +94,16 @@ try:
     distritos_disponibles = sorted(df_distritos['distrito'].unique())
 
     # Sidebar para configuracion
-    st.sidebar.header("⚙️ Configuracion")
+    st.sidebar.header("⚙️ Configuración")
 
     # Selector de vista
     vista = st.sidebar.radio(
         "Selecciona vista:",
-        options=["Mapa Geografico", "Mapa de Comarcas", "Mapa Portales", "Mapa Santander Portales", "Series Temporales", "Prediccion"]
+        options=["Mapa Geográfico", "Mapa de Comarcas", "Mapa Portales", "Mapa Santander Portales", "Series Temporales", "Predicción"]
     )
 
-    if vista == "Mapa Geografico":
-        st.subheader("🗺️ Mapa Geográfico de Cantabria por Municipios")
+    if vista == "Mapa Geográfico":
+        st.subheader("🗺️ Mapa geográfico de Cantabria por municipios")
 
         # Obtener datos mas recientes por municipio
         df_reciente = df.sort_values('fecha').groupby('municipio').tail(1)
@@ -229,7 +229,7 @@ try:
             values='precio_m2',
             color='precio_m2',
             color_continuous_scale='RdYlGn_r',
-            title='Distribución de Precios por Comarca y Municipio',
+            title='Distribución de precios por comarca y municipio',
             labels={'precio_m2': 'Precio €/m²'},
             hover_data={'precio_m2': ':.2f'}
         )
@@ -266,7 +266,7 @@ try:
             color='precio_medio',
             color_continuous_scale='RdYlGn_r',
             text='precio_medio',
-            title='Precio Medio por Comarca',
+            title='Precio medio por comarca',
             labels={'precio_medio': 'Precio Medio €/m²', 'comarca': ''}
         )
 
@@ -335,7 +335,7 @@ try:
             color='precio_medio_m2',
             color_continuous_scale='Viridis',
             labels={'precio_medio_m2': 'Precio Medio (€/m²)', 'comarca': 'Comarca'},
-            title='Precio Medio por Metro Cuadrado por Comarca (Ultimo Mes Disponible)',
+            title='Precio medio por metro cuadrado por comarca (Último mes disponible)',
             text='precio_medio_m2'
         )
 
@@ -361,12 +361,12 @@ try:
         df_resumen = df_reciente.groupby('comarca').agg({
             'precio_m2': ['mean', 'min', 'max', 'count']
         }).reset_index()
-        df_resumen.columns = ['Comarca', 'Precio Medio', 'Precio Minimo', 'Precio Maximo', 'Num. Municipios']
+        df_resumen.columns = ['Comarca', 'Precio Medio', 'Precio Mínimo', 'Precio Máximo', 'Num. Municipios']
 
         # Formatear la tabla
         df_resumen['Precio Medio'] = df_resumen['Precio Medio'].apply(lambda x: f"{x:.2f} €/m²")
-        df_resumen['Precio Minimo'] = df_resumen['Precio Minimo'].apply(lambda x: f"{x:.2f} €/m²")
-        df_resumen['Precio Maximo'] = df_resumen['Precio Maximo'].apply(lambda x: f"{x:.2f} €/m²")
+        df_resumen['Precio Mínimo'] = df_resumen['Precio Mínimo'].apply(lambda x: f"{x:.2f} €/m²")
+        df_resumen['Precio Máximo'] = df_resumen['Precio Máximo'].apply(lambda x: f"{x:.2f} €/m²")
 
         st.dataframe(
             df_resumen.sort_values('Comarca'),
@@ -436,9 +436,9 @@ try:
                 return "Sin datos catastrales"
             diff_pct = row['diferencia_porcentual']
             if diff_pct > 0:
-                return f"+{diff_pct:.1f}% mas caro que catastro"
+                return f"+{diff_pct:.1f}% más caro que catastro"
             elif diff_pct < 0:
-                return f"{diff_pct:.1f}% mas barato que catastro"
+                return f"{diff_pct:.1f}% más barato que catastro"
             else:
                 return "Igual que catastro"
 
@@ -568,7 +568,7 @@ try:
             color='diferencia_porcentual',
             color_continuous_scale=['#2d7f2e', '#ffeb84', '#d73027'],
             color_continuous_midpoint=0,
-            title='Diferencia Porcentual: Portales vs. Catastro por Municipio',
+            title='Diferencia porcentual: Portales vs. Catastro por municipio',
             labels={
                 'diferencia_porcentual': 'Diferencia (%)',
                 'municipio': 'Municipio'
@@ -638,7 +638,7 @@ try:
             for idx, row in top_diferencias.iterrows():
                 st.write(
                     f"**{row['municipio']}**: "
-                    f"{row['diferencia_porcentual']:.1f}% mas caro "
+                    f"{row['diferencia_porcentual']:.1f}% más caro "
                     f"({row['precio_portales']:.0f} vs {row['precio_catastro']:.0f} €/m²)"
                 )
 
@@ -671,7 +671,7 @@ try:
                 'precio_portales': 'Precio Portales (€/m²)',
                 'diferencia_porcentual': 'Diferencia (%)'
             },
-            title='Comparación: Precios Portales vs. Catastro'
+            title='Comparación: Precios portales vs. Catastro'
         )
 
         # Añadir linea de referencia diagonal (donde los precios serian iguales)
@@ -782,7 +782,7 @@ try:
         with col3:
             st.metric("Precio máximo", f"{precio_max_real:,.0f} €/m²")
 
-    elif vista == "Prediccion":
+    elif vista == "Predicción":
         st.subheader("🔮 Predicción de Precio de Vivienda")
 
         # Pedir API key al usuario
@@ -792,7 +792,7 @@ try:
             st.warning("⚠️ Introduce tu API key para poder realizar predicciones.")
             st.stop()
 
-        st.markdown("Introduce las características del inmueble para obtener una estimación de precio.")
+        st.markdown("Introduce las características del inmueble para obtener una estimación del precio.")
 
         # Lista completa de municipios de Cantabria
         municipios_prediccion = sorted([
@@ -976,7 +976,7 @@ try:
         # Seleccion multiple segun el tipo de zona
         if tipo_zona == "Municipios":
             zonas_seleccionadas = st.sidebar.multiselect(
-                "Selecciona uno o mas municipios:",
+                "Selecciona uno o más municipios:",
                 options=municipios_disponibles,
                 default=['Santander'] if 'Santander' in municipios_disponibles else [municipios_disponibles[0]]
             )
@@ -984,7 +984,7 @@ try:
             columna_zona = 'municipio'
         else:  # Distritos de Santander
             zonas_seleccionadas = st.sidebar.multiselect(
-                "Selecciona uno o mas distritos:",
+                "Selecciona uno o más distritos:",
                 options=distritos_disponibles,
                 default=[distritos_disponibles[0]] if distritos_disponibles else []
             )
@@ -993,8 +993,8 @@ try:
 
         # Tipo de visualizacion
         tipo_visualizacion = st.sidebar.radio(
-            "Tipo de visualizacion:",
-            options=["Precio Absoluto", "Variacion Mensual (%)", "Variacion Anual (%)"]
+            "Tipo de visualización:",
+            options=["Precio Absoluto", "Variación Mensual (%)", "Variación Anual (%)"]
         )
 
         # Filtrar datos por zonas seleccionadas
@@ -1003,17 +1003,17 @@ try:
             df_filtrado = df_filtrado.sort_values([columna_zona, 'fecha'])
 
             # Calcular variaciones segun seleccion
-            if tipo_visualizacion == "Variacion Mensual (%)":
+            if tipo_visualizacion == "Variación Mensual (%)":
                 df_filtrado['valor'] = df_filtrado.groupby(columna_zona)['precio_m2'].pct_change() * 100
-                titulo_grafico = "Variacion Mensual del Precio por m² (%)"
-                ylabel = "Variacion Mensual (%)"
-            elif tipo_visualizacion == "Variacion Anual (%)":
+                titulo_grafico = "Variación mensual del precio por m² (%)"
+                ylabel = "Variación Mensual (%)"
+            elif tipo_visualizacion == "Variación Anual (%)":
                 df_filtrado['valor'] = df_filtrado.groupby(columna_zona)['precio_m2'].pct_change(periods=12) * 100
-                titulo_grafico = "Variacion Anual del Precio por m² (%)"
-                ylabel = "Variacion Anual (%)"
+                titulo_grafico = "Variación anual del precio por m² (%)"
+                ylabel = "Variación Anual (%)"
             else:
                 df_filtrado['valor'] = df_filtrado['precio_m2']
-                titulo_grafico = "Evolucion del Precio por m²"
+                titulo_grafico = "Evolución del precio por m²"
                 ylabel = "Precio (€/m²)"
 
             # Crear grafico con Plotly
@@ -1053,7 +1053,7 @@ try:
 
             # Estadisticas resumidas
             st.markdown("---")
-            st.subheader("📈 Estadisticas Resumidas")
+            st.subheader("📈 Estadísticas Resumidas")
 
             cols = st.columns(len(zonas_seleccionadas))
 
@@ -1073,13 +1073,13 @@ try:
                             value=f"{precio_actual:.2f} €/m²",
                             delta=f"{variacion_total:.2f}%"
                         )
-                        st.write(f"**Precio Minimo:** {df_zona['precio_m2'].min():.2f} €/m²")
-                        st.write(f"**Precio Maximo:** {df_zona['precio_m2'].max():.2f} €/m²")
+                        st.write(f"**Precio Mínimo:** {df_zona['precio_m2'].min():.2f} €/m²")
+                        st.write(f"**Precio Máximo:** {df_zona['precio_m2'].max():.2f} €/m²")
                         st.write(f"**Precio Medio:** {df_zona['precio_m2'].mean():.2f} €/m²")
                     else:
-                        st.write(f"**Variacion Media:** {df_zona['valor'].mean():.2f}%")
-                        st.write(f"**Variacion Minima:** {df_zona['valor'].min():.2f}%")
-                        st.write(f"**Variacion Maxima:** {df_zona['valor'].max():.2f}%")
+                        st.write(f"**Variación Media:** {df_zona['valor'].mean():.2f}%")
+                        st.write(f"**Variación Mínima:** {df_zona['valor'].min():.2f}%")
+                        st.write(f"**Variación Máxima:** {df_zona['valor'].max():.2f}%")
 
             # Tabla de datos
             st.markdown("---")
@@ -1098,14 +1098,14 @@ try:
             st.warning(f"⚠️ Por favor, selecciona al menos un {mensaje} para visualizar los datos.")
 
 except FileNotFoundError:
-    st.error("❌ No se encontro el archivo de datos. Asegurate de que existe 'data/precios_municipios_cantabria.csv'")
+    st.error("❌ No se encontró el archivo de datos. Asegúrate de que existe 'data/precios_municipios_cantabria.csv'")
 except Exception as e:
     st.error(f"❌ Error al cargar los datos: {str(e)}")
 
 # Informacion adicional en sidebar
 st.sidebar.markdown("---")
 st.sidebar.info(
-    "**ℹ️ Informacion**\n\n"
+    "**ℹ️ Información**\n\n"
     f"Municipios con datos: {len(municipios_disponibles) if 'municipios_disponibles' in locals() else 'N/A'}\n\n"
     "Datos actualizados de precios inmobiliarios en Cantabria."
 )
