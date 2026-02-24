@@ -72,6 +72,164 @@ def normalizar_municipio(nombre):
 
     return mapeo_exacto.get(nombre_str, nombre_str)
 
+
+# %% Funciones para crear mapa de crecimiento (AJUSTAR SEGUN NECESIDADES)
+def build_point_map(df_cambio, value_col, title, value_label, size_col=None):
+    """
+    Mapa alternativo SIN GeoJSON: pinta puntos (centroides) por municipio con color por cambio.
+    Requiere que obtener_coordenadas(municipio) devuelva (lat, lon) o dict con lat/lon.
+    """
+    df_pts = df_cambio.copy()
+
+    # Obtener coordenadas
+    def _coords(m):
+        c = obtener_coordenadas(m)
+        if c is None:
+            return pd.Series([None, None], index=["lat", "lon"])
+        if isinstance(c, dict):
+            lat = c.get("lat") or c.get("latitude")
+            lon = c.get("lon") or c.get("lng") or c.get("longitude")
+            return pd.Series([lat, lon], index=["lat", "lon"])
+        if isinstance(c, (tuple, list)) and len(c) >= 2:
+            return pd.Series([c[0], c[1]], index=["lat", "lon"])
+        return pd.Series([None, None], index=["lat", "lon"])
+
+    df_pts[["lat", "lon"]] = df_pts["municipio"].apply(_coords)
+
+    # Filtrar municipios sin coordenadas
+    df_pts = df_pts.dropna(subset=["lat", "lon", value_col])
+
+    if df_pts.empty:
+        st.warning("No hay coordenadas disponibles para dibujar el mapa de puntos. "
+                   "Asegúrate de que obtener_coordenadas() devuelve lat/lon.")
+        return
+
+    # Escala divergente centrada en 0
+    vmax = float(df_pts[value_col].abs().max()) or 1.0
+
+    # Tamaño (para que sea comparable)
+    if size_col is None:
+        size_series = df_pts[value_col].abs()
+    else:
+        size_series = df_pts[size_col].abs()
+
+    fig = px.scatter_mapbox(
+        df_pts,
+        lat="lat",
+        lon="lon",
+        color=value_col,
+        size=size_series,
+        size_max=22,
+        zoom=7.8,
+        center={"lat": 43.25, "lon": -4.0},
+        mapbox_style="carto-positron",
+        range_color=(-vmax, vmax),
+        color_continuous_scale="RdBu_r",
+        hover_name="municipio",
+        hover_data={
+            "precio_prev": ":.0f",
+            "precio_anio": ":.0f",
+            "cambio_pct": ":.2f",
+            "cambio_abs": ":.2f",
+            "lat": False,
+            "lon": False,
+        },
+        title=title,
+        labels={value_col: value_label},
+    )
+    fig.update_layout(height=600, margin={"r": 0, "t": 40, "l": 0, "b": 0})
+    st.plotly_chart(fig, use_container_width=True)
+    
+def build_choropleth_map(
+    df_cambio: pd.DataFrame,
+    geojson_municipios: dict,
+    value_col: str,
+    title: str,
+    value_label: str,
+    featureidkey: str = "properties.NOMBRE",
+    geo_name_prop: str = "NOMBRE",
+):
+    """
+    Choropleth por municipio usando GeoJSON.
+    - df_cambio debe tener: municipio, cambio_pct, cambio_abs, precio_prev, precio_anio...
+    - geojson_municipios: GeoJSON con features[].properties[geo_name_prop]
+    - value_col: 'cambio_pct' o 'cambio_abs'
+    """
+
+    # 1) Normalizar nombre para hacer matching con GeoJSON
+    df_map = df_cambio.copy()
+    df_map["municipio_norm"] = df_map["municipio"].apply(normalizar_municipio)
+
+    # 2) Crear dataset completo para incluir municipios sin datos (opcional)
+    municipios_geojson = [
+        f["properties"].get(geo_name_prop)
+        for f in geojson_municipios.get("features", [])
+    ]
+
+    # Diccionario: municipio_norm -> registro (si hay duplicados, nos quedamos con el primero)
+    registros = (
+        df_map.drop_duplicates(subset=["municipio_norm"])
+        .set_index("municipio_norm")
+        .to_dict("index")
+    )
+
+    todos = []
+    for mun_geo in municipios_geojson:
+        if mun_geo in registros:
+            row = registros[mun_geo].copy()
+            row["municipio_geo"] = mun_geo
+            todos.append(row)
+        else:
+            # sin datos -> NaN (para que Plotly lo pinte “vacío”)
+            todos.append({
+                "municipio": mun_geo,
+                "municipio_norm": mun_geo,
+                "municipio_geo": mun_geo,
+                value_col: None,
+                "precio_prev": None,
+                "precio_anio": None,
+                "cambio_pct": None,
+                "cambio_abs": None,
+            })
+
+    df_full = pd.DataFrame(todos)
+
+    # 3) Rango divergente centrado en 0
+    vmax = df_full[value_col].abs().max()
+    vmax = float(vmax) if pd.notna(vmax) and vmax != 0 else 1.0
+
+    # 4) Choropleth
+    fig = px.choropleth_mapbox(
+        df_full,
+        geojson=geojson_municipios,
+        locations="municipio_norm",
+        featureidkey=featureidkey,
+        color=value_col,
+        color_continuous_scale="RdBu_r",
+        range_color=(-vmax, vmax),
+        mapbox_style="carto-positron",
+        zoom=7.8,
+        center={"lat": 43.25, "lon": -4.0},
+        opacity=0.8,
+        hover_name="municipio",
+        hover_data={
+            "municipio_norm": False,
+            "precio_prev": ":.0f",
+            "precio_anio": ":.0f",
+            "cambio_pct": ":.2f",
+            "cambio_abs": ":.2f",
+        },
+        labels={value_col: value_label},
+        title=title,
+    )
+
+    fig.update_traces(marker_line_width=1.2, marker_line_color="white")
+    fig.update_layout(height=650, margin={"r": 0, "t": 40, "l": 0, "b": 0})
+
+    st.plotly_chart(fig, use_container_width=True)
+# %% FIN Funciones para crear mapa de crecimiento
+
+
 # Titulo principal
 st.title("📊 Precios del Metro Cuadrado en Cantabria")
 st.markdown("### Analisis de precios inmobiliarios por municipio")
@@ -81,26 +239,45 @@ st.markdown("### Analisis de precios inmobiliarios por municipio")
 # ya vienen con @st.cache_data del modulo s3_loader
 
 try:
-    df = load_municipios_data()
-    df_distritos = load_distritos_data()
-    df_portales = load_portales_data()
+    #df = load_municipios_data()
+    #df_distritos = load_distritos_data()
+    #df_portales = load_portales_data()
+    
+    ## Agregar comarca a cada municipio
+    #df['comarca'] = df['municipio'].apply(obtener_comarca)
+    #df_portales['comarca'] = df_portales['municipio'].apply(obtener_comarca)
 
-    # Agregar comarca a cada municipio
-    df['comarca'] = df['municipio'].apply(obtener_comarca)
-    df_portales['comarca'] = df_portales['municipio'].apply(obtener_comarca)
+    ## Obtener lista de municipios disponibles (solo los que tienen datos)
+    #municipios_disponibles = sorted(df['municipio'].unique())
+    #distritos_disponibles = sorted(df_distritos['distrito'].unique())
 
-    # Obtener lista de municipios disponibles (solo los que tienen datos)
-    municipios_disponibles = sorted(df['municipio'].unique())
-    distritos_disponibles = sorted(df_distritos['distrito'].unique())
+    ## Sidebar para configuracion
+    #st.sidebar.header("⚙️ Configuracion")
 
-    # Sidebar para configuracion
-    st.sidebar.header("⚙️ Configuracion")
-
-    # Selector de vista
+    ## Selector de vista
+    #vista = st.sidebar.radio(
+    #    "Selecciona vista:",
+    #    options=["Mapa Geografico", "Mapa de Comarcas", "Mapa Portales", "Mapa Santander Portales", "Series Temporales", "Mapa Variación Anual", "Prediccion"]
+    #)
+    
+    df = pd.read_parquet("C:\\Users\\aplac\\Downloads\\precios_municipios_cantabria.parquet")
+    if "municipio" not in df.columns and "distrito" in df.columns:
+        df = df.rename(columns={"distrito": "municipio"})
+        
+    # Vacíos para no romper el resto
+    df_distritos = pd.DataFrame(columns=["distrito", "fecha", "precio_m2"])
+    df_portales = pd.DataFrame(columns=["municipio", "fecha", "precio_m2"])
+    
+    if "municipio" in df.columns:
+        df["comarca"] = df["municipio"].apply(obtener_comarca)
+        
     vista = st.sidebar.radio(
         "Selecciona vista:",
-        options=["Mapa Geografico", "Mapa de Comarcas", "Mapa Portales", "Mapa Santander Portales", "Series Temporales", "Prediccion"]
+        options=[ "Mapa Variación Anual"]
     )
+    
+    
+    
 
     if vista == "Mapa Geografico":
         st.subheader("🗺️ Mapa Geográfico de Cantabria por Municipios")
@@ -781,7 +958,153 @@ try:
             st.metric("Secciones con datos", f"{len(df_secciones)}")
         with col3:
             st.metric("Precio máximo", f"{precio_max_real:,.0f} €/m²")
+            
+    elif vista == "Mapa Variación Anual":        
+        df_crecimiento = df.copy()
+        df_crecimiento["fecha"] = pd.to_datetime(df_crecimiento["fecha"], errors="coerce")
+        df_crecimiento = df_crecimiento.dropna(subset=["fecha"])
+        df_crecimiento['anio'] = df_crecimiento['fecha'].dt.year
+        
+        # Agregación anual por municipio
+        df_anual = (
+            df_crecimiento.groupby(['municipio', 'anio'], as_index=False)
+            .agg(precio_m2 = ('precio_m2', 'median'))
+            .sort_values(['municipio', 'anio'])
+        )
+        
+        # Elegir año objetivo (por defecto el último disponible)
+        anios_disponibles = sorted(df_anual['anio'].dropna().unique())
+        if len(anios_disponibles) < 2:
+            st.warning("Necesitas al menos 2 años de datos para mostrar el crecimiento anual.")
+            st.stop()
+            
+        anio_objetivo = st.sidebar.selectbox(
+            "Año a comparar (vs año anterior):",
+            options = anios_disponibles[1:], # Desde el segundo año (porque se necesita anterior)
+            index = len(anios_disponibles[1:]) - 1
+        )
+        
+        # Calcular cambio año vs anterior
+        pivot = df_anual.pivot(index="municipio", columns="anio", values="precio_m2")
+        
+        if anio_objetivo not in pivot.columns or (anio_objetivo - 1) not in pivot.columns:
+            st.warning("No hay datos suficientes para ese año y su anterior en todos los municipios.")
+            st.stop()
+        
+        precio_actual = pivot[anio_objetivo]
+        precio_prev = pivot[anio_objetivo - 1]
 
+        cambio_abs = (precio_actual - precio_prev)
+        cambio_pct = (cambio_abs / precio_prev) * 100
+        
+        df_cambio = pd.DataFrame({
+            "municipio": pivot.index,
+            "precio_anio": precio_actual.values,
+            "precio_prev": precio_prev.values,
+            "cambio_abs": cambio_abs.values,
+            "cambio_pct": cambio_pct.values
+        }).dropna(subset=["precio_prev", "precio_anio", "cambio_abs", "cambio_pct"])
+        
+        # Métricas resumen
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            st.metric("Municipios comparables", len(df_cambio))
+        with col2:
+            st.metric("Media cambio (%)", f"{df_cambio['cambio_pct'].mean():.2f}%")
+        with col3:
+            st.metric("Media cambio (€/m²)", f"{df_cambio['cambio_abs'].mean():.2f}")
+            
+        # Mapa
+        metrica = st.sidebar.selectbox(
+            "Métrica del mapa:",
+            options=["Variación (%)", "Variación (€/m²)"],
+            index=0
+        )
+
+        if metrica == "Variación (%)":
+            value_col = "cambio_pct"
+            value_label = "Cambio (%)"
+            title = f"Variación anual (%) {anio_objetivo} vs {anio_objetivo-1}"
+        else:
+            value_col = "cambio_abs"
+            value_label = "Cambio (€/m²)"
+            title = f"Variación anual (€/m²) {anio_objetivo} vs {anio_objetivo-1}"
+
+        st.subheader("🗺️ Mapa de variación anual")
+        
+        build_point_map(
+            df_cambio,
+            value_col=value_col,
+            title=title,
+            value_label=value_label,
+            size_col="cambio_pct"
+        )
+        
+        # Gráfico de barras horizontal
+        st.subheader("📊 Ranking por municipio")
+        df_bar = df_cambio.sort_values(value_col, ascending=False).copy()
+
+        # Formateo de hover según métrica
+        if value_col == "cambio_pct":
+            hover_fmt = {
+                "precio_prev": ":.0f",
+                "precio_anio": ":.0f",
+                "cambio_pct": ":.2f",
+                "cambio_abs": ":.2f",
+            }
+            x_title = "Cambio (%)"
+        else:
+            hover_fmt = {
+                "precio_prev": ":.0f",
+                "precio_anio": ":.0f",
+                "cambio_abs": ":.2f",
+                "cambio_pct": ":.2f",
+            }
+            x_title = "Cambio (€/m²)"
+
+        fig_bar = px.bar(
+            df_bar,
+            x=value_col,
+            y="municipio",
+            orientation="h",
+            title=title,
+            labels={value_col: value_label, "municipio": "Municipio"},
+            hover_data=hover_fmt
+        )
+        
+        fig_bar.update_layout(height=900, yaxis={"categoryorder": "total ascending"})
+        fig_bar.update_xaxes(title=x_title)
+
+        st.plotly_chart(fig_bar, use_container_width=True)
+        
+        # Tablas top subidas/bajadas
+        st.markdown("---")
+        c1, c2 = st.columns(2)
+        
+        top_suben = df_cambio.sort_values("cambio_pct", ascending=False).head(10).copy()
+        top_bajan = df_cambio.sort_values("cambio_pct", ascending=True).head(10).copy()
+        
+        for t in (top_suben, top_bajan):
+            t["cambio_pct"] = t["cambio_pct"].round(2)
+            t["cambio_abs"] = t["cambio_abs"].round(2)
+            t["precio_prev"] = t["precio_prev"].round(0)
+            t["precio_anio"] = t["precio_anio"].round(0)
+    
+        with c1:
+            st.subheader("📈 Top 10 mayores subidas")
+            st.dataframe(
+                top_suben[["municipio", "precio_prev", "precio_anio", "cambio_pct", "cambio_abs"]],
+                use_container_width=True,
+                hide_index=True
+            )
+        with c2:
+            st.subheader("📉 Top 10 mayores bajadas")
+            st.dataframe(
+                top_bajan[["municipio", "precio_prev", "precio_anio", "cambio_pct", "cambio_abs"]],
+                use_container_width=True,
+                hide_index=True
+            )
+        
     elif vista == "Prediccion":
         st.subheader("🔮 Predicción de Precio de Vivienda")
 
