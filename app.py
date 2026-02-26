@@ -978,7 +978,7 @@ try:
             zonas_seleccionadas = st.sidebar.multiselect(
                 "Selecciona uno o más municipios:",
                 options=municipios_disponibles,
-                default=['Santander'] if 'Santander' in municipios_disponibles else [municipios_disponibles[0]]
+                default=[m for m in ['Santander', 'Torrelavega', 'Comillas'] if m in municipios_disponibles] or [municipios_disponibles[0]]
             )
             df_usado = df
             columna_zona = 'municipio'
