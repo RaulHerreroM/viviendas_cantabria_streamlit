@@ -247,43 +247,6 @@ try:
 
         st.plotly_chart(fig_treemap, use_container_width=True)
 
-        # Mapa de calor por comarca
-        st.markdown("---")
-        st.subheader("📊 Comparativa de Comarcas")
-
-        df_comarcas = df_reciente.groupby('comarca').agg({
-            'precio_m2': 'mean',
-            'municipio': 'count'
-        }).reset_index()
-        df_comarcas.columns = ['comarca', 'precio_medio', 'num_municipios']
-        df_comarcas = df_comarcas.sort_values('precio_medio', ascending=True)
-
-        fig_heatmap = px.bar(
-            df_comarcas,
-            y='comarca',
-            x='precio_medio',
-            orientation='h',
-            color='precio_medio',
-            color_continuous_scale='RdYlGn_r',
-            text='precio_medio',
-            title='Precio medio por comarca',
-            labels={'precio_medio': 'Precio Medio €/m²', 'comarca': ''}
-        )
-
-        fig_heatmap.update_traces(
-            texttemplate='%{text:.0f} €/m²',
-            textposition='outside'
-        )
-
-        fig_heatmap.update_layout(
-            height=500,
-            showlegend=False,
-            xaxis_title="Precio Medio (€/m²)",
-            yaxis_title=""
-        )
-
-        st.plotly_chart(fig_heatmap, use_container_width=True)
-
         # Estadisticas generales
         st.markdown("---")
         col1, col2, col3 = st.columns(3)
